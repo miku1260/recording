@@ -27,6 +27,7 @@
             font-size: 24px;
             color: #333;
         }
+        input[type="file"],
         input[type="text"] {
             width: 100%;
             padding: 10px;
@@ -66,6 +67,7 @@
 <body>
     <div class="container">
         <h1>Audio Recorder</h1>
+        <input type="file" id="audio-file" accept=".wav" />
         <input type="text" id="file-name" placeholder="Enter file name" />
         <div>
             <button id="start-recording">Start Recording</button>
@@ -83,29 +85,26 @@
         let audioBuffer;
         let inputStream;
 
-        // あらかじめ指定された伴奏ファイルのURL
-        const accompanimentURL = 'https://www.dropbox.com/scl/fi/hok29zs8hf0a00l1dee2g/ito.wav?rlkey=x0k0vej614u60ru3rvf13cgxv&st=u76wpldo&dl=1';
-
-        // 伴奏ファイルの読み込み処理
-        window.onload = function() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            fetch(accompanimentURL)
-                .then(response => response.arrayBuffer())
-                .then(data => audioContext.decodeAudioData(data))
-                .then(buffer => {
-                    audioBuffer = buffer;
-                })
-                .catch(error => {
-                    console.error('Error loading accompaniment file:', error);
-                });
-        };
-
+        document.getElementById('audio-file').addEventListener('change', handleAudioUpload);
         document.getElementById('start-recording').addEventListener('click', startRecording);
         document.getElementById('stop-recording').addEventListener('click', stopRecording);
 
+        function handleAudioUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContext.decodeAudioData(e.target.result, function(buffer) {
+                    audioBuffer = buffer;
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
         function startRecording() {
             if (!audioBuffer) {
-                alert('Accompaniment file not loaded yet. Please try again.');
+                alert('Please upload an audio file first.');
                 return;
             }
             inputStream = new MediaStream();
