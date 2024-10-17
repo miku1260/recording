@@ -4,13 +4,76 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Recorder</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+        }
+        .container {
+            background-color: #fff;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            font-size: 24px;
+            color: #333;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            width: 48%;
+            padding: 10px;
+            margin: 5px 1%;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #download-link {
+            display: none;
+            margin-top: 15px;
+            text-decoration: none;
+            color: #007BFF;
+            font-size: 16px;
+        }
+        #file-name-display {
+            margin-top: 10px;
+            font-size: 16px;
+            color: #555;
+        }
+    </style>
 </head>
 <body>
-    <input type="file" id="audio-file" accept=".wav" />
-    <input type="text" id="file-name" placeholder="Enter file name" />
-    <button id="start-recording">Start Recording</button>
-    <button id="stop-recording">Stop Recording</button>
-    <a id="download-link" style="display:none">Download Recording</a>
+    <div class="container">
+        <h1>Audio Recorder</h1>
+        <input type="text" id="file-name" placeholder="Enter file name" />
+        <div>
+            <button id="start-recording">Start Recording</button>
+            <button id="stop-recording">Stop Recording</button>
+        </div>
+        <a id="download-link" style="display:none">Download Recording</a>
+        <div id="file-name-display"></div>
+    </div>
 
     <script>
         let audioContext;
@@ -20,36 +83,34 @@
         let audioBuffer;
         let inputStream;
 
-        document.getElementById('audio-file').addEventListener('change', handleAudioUpload);
+        // あらかじめ指定された伴奏ファイルのURL
+        const accompanimentURL = 'https://www.dropbox.com/scl/fi/hok29zs8hf0a00l1dee2g/ito.wav?rlkey=x0k0vej614u60ru3rvf13cgxv&st=u76wpldo&dl=1';
+
+        // 伴奏ファイルの読み込み処理
+        window.onload = function() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            fetch(accompanimentURL)
+                .then(response => response.arrayBuffer())
+                .then(data => audioContext.decodeAudioData(data))
+                .then(buffer => {
+                    audioBuffer = buffer;
+                })
+                .catch(error => {
+                    console.error('Error loading accompaniment file:', error);
+                });
+        };
+
         document.getElementById('start-recording').addEventListener('click', startRecording);
         document.getElementById('stop-recording').addEventListener('click', stopRecording);
 
-        function handleAudioUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                audioContext.decodeAudioData(e.target.result, function(buffer) {
-                    audioBuffer = buffer;
-                });
-            };
-            reader.readAsArrayBuffer(file);
-        }
-
         function startRecording() {
             if (!audioBuffer) {
-                alert('Please upload an audio file first.');
+                alert('Accompaniment file not loaded yet. Please try again.');
                 return;
             }
             inputStream = new MediaStream();
             navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
                 const sourceNode = audioContext.createMediaStreamSource(stream);
-
-                // マイク音を再生しないようにする
-                // sourceNode.connect(audioContext.destination);
-
-                // Start the accompaniment playback
                 audioSource = audioContext.createBufferSource();
                 audioSource.buffer = audioBuffer;
                 audioSource.connect(audioContext.destination);
@@ -80,7 +141,6 @@
                     const sampleRate = audioBuffer.sampleRate;
                     const offlineContext = new OfflineAudioContext(numChannels, length, sampleRate);
 
-                    // Create two audio buffers for left (accompaniment) and right (microphone) channels
                     const leftChannel = offlineContext.createBufferSource();
                     leftChannel.buffer = audioBuffer;
                     const rightChannel = offlineContext.createBufferSource();
@@ -98,12 +158,16 @@
                         const wavBlob = bufferToWav(renderedBuffer);
                         const downloadLink = document.getElementById('download-link');
 
-                        // Get the file name from the input field, default to 'recording' if empty
                         const fileName = document.getElementById('file-name').value || 'recording';
                         downloadLink.href = URL.createObjectURL(wavBlob);
                         downloadLink.download = `${fileName}.wav`;
-                        downloadLink.style.display = 'block';
-                        downloadLink.textContent = 'Download Recording';
+
+                        // Automatically trigger download
+                        downloadLink.click();
+
+                        // Display the file name
+                        const fileNameDisplay = document.getElementById('file-name-display');
+                        fileNameDisplay.textContent = `Downloaded file: ${fileName}.wav`;
                     });
                 });
             };
@@ -116,10 +180,8 @@
             const wavBuffer = new ArrayBuffer(length);
             const view = new DataView(wavBuffer);
 
-            // Write WAV header
             writeWavHeader(view, buffer.sampleRate, numChannels, buffer.length);
 
-            // Write interleaved audio data
             let offset = 44;
             for (let i = 0; i < buffer.length; i++) {
                 for (let channel = 0; channel < numChannels; channel++) {
