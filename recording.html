@@ -16,43 +16,50 @@
         }
         .container {
             background-color: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             text-align: center;
-            max-width: 400px;
+            max-width: 500px;
             width: 100%;
         }
         h1 {
-            font-size: 22px;
+            font-size: 24px;
             color: #333;
         }
-        input[type="file"] {
-            margin-bottom: 15px;
+        input[type="file"],
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
         }
         button {
-            padding: 10px 15px;
-            background-color: #28a745;
+            width: 48%;
+            padding: 10px;
+            margin: 5px 1%;
+            background-color: #4CAF50;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
-            margin: 5px;
         }
         button:hover {
-            background-color: #218838;
+            background-color: #45a049;
         }
         #download-link {
-            margin-top: 20px;
             display: none;
+            margin-top: 15px;
             text-decoration: none;
+            color: #007BFF;
             font-size: 16px;
-            color: #007bff;
         }
         #file-name-display {
             margin-top: 10px;
-            font-size: 14px;
+            font-size: 16px;
             color: #555;
         }
     </style>
@@ -61,6 +68,7 @@
     <div class="container">
         <h1>Audio Recorder</h1>
         <input type="file" id="audio-file" accept=".wav" />
+        <input type="text" id="file-name" placeholder="名前を入力してください" />
         <div>
             <button id="start-recording">Start Recording</button>
             <button id="stop-recording">Stop Recording</button>
@@ -76,21 +84,21 @@
         let audioChunks = [];
         let audioBuffer;
         let inputStream;
-        let selectedFileName = '';  // 伴奏ファイル名を保存するための変数
+        let selectedFileName = '';
 
         document.getElementById('audio-file').addEventListener('change', handleAudioUpload);
         document.getElementById('start-recording').addEventListener('click', startRecording);
         document.getElementById('stop-recording').addEventListener('click', stopRecording);
 
         function handleAudioUpload(event) {
-            const file = event.target.files[0];  // ユーザーが選んだファイルの情報を取得
+            const file = event.target.files[0];
             if (!file) return;
 
-            selectedFileName = file.name.split('.').slice(0, -1).join('.');  // 拡張子を除いたファイル名を取得
+            selectedFileName = file.name.split('.').slice(0, -1).join('.');
 
             const reader = new FileReader();
             reader.onload = function(e) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 audioContext.decodeAudioData(e.target.result, function(buffer) {
                     audioBuffer = buffer;
                 });
@@ -98,7 +106,7 @@
             reader.readAsArrayBuffer(file);
 
             const fileNameDisplay = document.getElementById('file-name-display');
-            fileNameDisplay.textContent = `Selected file: ${selectedFileName}.wav`;  // 選択したファイル名を表示
+            fileNameDisplay.textContent = `Selected file: ${selectedFileName}.wav`;
         }
 
         function startRecording() {
@@ -107,16 +115,16 @@
                 return;
             }
             inputStream = new MediaStream();
-            navigator.mediaDevices.getUserMedia({ audio: { latencyHint: 'playback' }, video: false }).then(stream => {
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
                 const sourceNode = audioContext.createMediaStreamSource(stream);
                 audioSource = audioContext.createBufferSource();
                 audioSource.buffer = audioBuffer;
                 audioSource.connect(audioContext.destination);
                 audioSource.start();
 
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm', audioBitsPerSecond: 128000 });
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' }); // Change mimeType
                 mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-                mediaRecorder.start(100);  // チャンクのサイズを小さくして、データ処理の遅延を防ぐ
+                mediaRecorder.start();
             });
         }
 
@@ -129,7 +137,7 @@
         }
 
         function createStereoWav() {
-            const audioBlob = new Blob(audioChunks);
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // Specify the Blob type
             const reader = new FileReader();
             reader.onloadend = () => {
                 const micAudioArrayBuffer = reader.result;
@@ -156,15 +164,17 @@
                         const wavBlob = bufferToWav(renderedBuffer);
                         const downloadLink = document.getElementById('download-link');
 
-                        // ダウンロードファイル名にユーザーの入力と選択したファイル名を追加
-                        const modifiedFileName = `${selectedFileName}_recording.wav`;
+                        let fileName = document.getElementById('file-name').value;
+                        if (!fileName) {
+                            fileName = 'recording';
+                        }
+
+                        const modifiedFileName = `${fileName}_${selectedFileName}.wav`;
                         downloadLink.href = URL.createObjectURL(wavBlob);
                         downloadLink.download = modifiedFileName;
 
-                        // 自動的にダウンロードを開始
                         downloadLink.click();
 
-                        // ダウンロードされたファイル名を表示
                         const fileNameDisplay = document.getElementById('file-name-display');
                         fileNameDisplay.textContent = `Downloaded file: ${modifiedFileName}`;
                     });
