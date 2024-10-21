@@ -176,19 +176,21 @@
             reader.onloadend = () => {
                 const micAudioArrayBuffer = reader.result;
                 audioContext.decodeAudioData(micAudioArrayBuffer, micBuffer => {
-                    const numChannels = Math.min(audioBuffer.numberOfChannels, micBuffer.numberOfChannels); // チャンネル数チェック
+                    const numChannels = 2; // ステレオ用に2チャンネル
                     const length = Math.max(audioBuffer.length, micBuffer.length);
                     const sampleRate = audioBuffer.sampleRate;
                     const offlineContext = new OfflineAudioContext(numChannels, length, sampleRate);
 
+                    // 左チャンネルに伴奏、右チャンネルにマイク音声
                     const leftChannel = offlineContext.createBufferSource();
                     leftChannel.buffer = audioBuffer;
+
                     const rightChannel = offlineContext.createBufferSource();
                     rightChannel.buffer = micBuffer;
 
                     const merger = offlineContext.createChannelMerger(2);
-                    leftChannel.connect(merger, 0, 0);
-                    rightChannel.connect(merger, 0, 1);
+                    leftChannel.connect(merger, 0, 0); // 左チャンネルに接続
+                    rightChannel.connect(merger, 0, 1); // 右チャンネルに接続
                     merger.connect(offlineContext.destination);
 
                     leftChannel.start();
