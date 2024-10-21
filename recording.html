@@ -98,7 +98,10 @@
 
             const reader = new FileReader();
             reader.onload = function(e) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    latencyHint: 'interactive', // 低遅延モードを指定
+                    sampleRate: 44100 // サンプルレートを明示
+                });
                 audioContext.decodeAudioData(e.target.result, function(buffer) {
                     audioBuffer = buffer;
                 });
@@ -115,14 +118,24 @@
                 return;
             }
             inputStream = new MediaStream();
-            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,  // エコーキャンセル
+                    noiseSuppression: true,  // ノイズ除去
+                    latency: 0  // 低遅延モード
+                }
+            }).then(stream => {
                 const sourceNode = audioContext.createMediaStreamSource(stream);
                 audioSource = audioContext.createBufferSource();
                 audioSource.buffer = audioBuffer;
                 audioSource.connect(audioContext.destination);
                 audioSource.start();
 
-                mediaRecorder = new MediaRecorder(stream);
+                // MediaRecorderで録音
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm',  // MIMEタイプをwebmに設定
+                    audioBitsPerSecond: 128000  // ビットレートを指定
+                });
                 mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
                 mediaRecorder.start();
             });
@@ -144,7 +157,7 @@
                 audioContext.decodeAudioData(micAudioArrayBuffer, micBuffer => {
                     const numChannels = 2;
                     const length = Math.max(audioBuffer.length, micBuffer.length);
-                    const sampleRate = 44100;
+                    const sampleRate = audioBuffer.sampleRate;
                     const offlineContext = new OfflineAudioContext(numChannels, length, sampleRate);
 
                     const leftChannel = offlineContext.createBufferSource();
