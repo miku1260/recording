@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Recorder</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+        }
+        .container {
+            background-color: #fff;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            font-size: 24px;
+            color: #333;
+        }
+        input[type="file"],
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            width: 48%;
+            padding: 10px;
+            margin: 5px 1%;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #download-link {
+            display: none;
+            margin-top: 15px;
+            text-decoration: none;
+            color: #007BFF;
+            font-size: 16px;
+        }
+        #file-name-display {
+            margin-top: 10px;
+            font-size: 16px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Audio Recorder</h1>
+        <input type="file" id="audio-file" accept=".wav" />
+        <input type="text" id="file-name" placeholder="名前を入力してください" />
+        <div>
+            <button id="start-recording">Start Recording</button>
+            <button id="stop-recording">Stop Recording</button>
+        </div>
+        <a id="download-link" style="display:none">Download Recording</a>
+        <div id="file-name-display"></div>
+    </div>
+
+    <script>
+        let audioContext;
+        let audioSource;
+        let mediaRecorder;
+        let audioChunks = [];
+        let audioBuffer;
+        let selectedFileName = '';  // 伴奏ファイル名を保存するための変数
+
+        document.getElementById('audio-file').addEventListener('change', handleAudioUpload);
+        document.getElementById('start-recording').addEventListener('click', startRecording);
+        document.getElementById('stop-recording').addEventListener('click', stopRecording);
+
+        function handleAudioUpload(event) {
+            const file = event.target.files[0];  // ユーザーが選んだファイルの情報を取得
+            if (!file) return;
+
+            selectedFileName = file.name.split('.').slice(0, -1).join('.');  // 拡張子を除いたファイル名を取得
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContext.decodeAudioData(e.target.result, function(buffer) {
+                    audioBuffer = buffer;
+                });
+            };
+            reader.readAsArrayBuffer(file);
+
+            const fileNameDisplay = document.getElementById('file-name-display');
+            fileNameDisplay.textContent = `Selected file: ${selectedFileName}.wav`;  // 選択したファイル名を表示
+        }
+
+        function startRecording() {
+            if (!audioBuffer) {
+                alert('Please upload an audio file first.');
+                return;
+            }
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                const sourceNode = audioContext.createMediaStreamSource(stream);
+                audioSource = audioContext.createBufferSource();
+                audioSource.buffer = audioBuffer;
+                audioSource.connect(audioContext.destination);
+                audioSource.start();
+
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+                mediaRecorder.start();
+            });
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && audioSource) {
+                mediaRecorder.stop();
+                audioSource.stop();
+                saveRecording();  // 伴奏との結合をやめ、録音音声のみを保存
+            }
+        }
+
+        function saveRecording() {
+            const audioBlob = new Blob(audioChunks);
+            const downloadLink = document.getElementById('download-link');
+
+            // 入力されたファイル名を取得
+            let fileName = document.getElementById('file-name').value;
+            if (!fileName) {
+                fileName = 'recording';
+            }
+
+            // ダウンロードファイル名にユーザーの入力と選択したファイル名を追加
+            const modifiedFileName = `${fileName}.wav`;
+            downloadLink.href = URL.createObjectURL(audioBlob);
+            downloadLink.download = modifiedFileName;
+
+            // 自動的にダウンロードを開始
+            downloadLink.click();
+
+            // ダウンロードされたファイル名を表示
+            const fileNameDisplay = document.getElementById('file-name-display');
+            fileNameDisplay.textContent = `Downloaded file: ${modifiedFileName}`;
+        }
+    </script>
+</body>
+</html>
