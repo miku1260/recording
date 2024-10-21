@@ -122,7 +122,7 @@
                 audioSource.connect(audioContext.destination);
                 audioSource.start();
 
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' }); // Change mimeType
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
                 mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
                 mediaRecorder.start();
             });
@@ -130,14 +130,24 @@
 
         function stopRecording() {
             if (mediaRecorder && audioSource) {
+                // 録音停止時の処理を追加
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    
+                    if (audioBlob.size > 0) {
+                        createStereoWav(audioBlob);
+                    } else {
+                        alert('No audio data was recorded.');
+                    }
+                };
+
+                // 録音停止
                 mediaRecorder.stop();
                 audioSource.stop();
-                createStereoWav();
             }
         }
 
-        function createStereoWav() {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // Specify the Blob type
+        function createStereoWav(audioBlob) {
             const reader = new FileReader();
             reader.onloadend = () => {
                 const micAudioArrayBuffer = reader.result;
