@@ -68,7 +68,7 @@
     <div class="container">
         <h1>Audio Recorder</h1>
         <input type="file" id="audio-file" accept=".wav" />
-        <input type="text" id="file-name" placeholder="名前を入力してください:" />
+        <input type="text" id="file-name" placeholder="名前を入力してください" />
         <div>
             <button id="start-recording">Start Recording</button>
             <button id="stop-recording">Stop Recording</button>
@@ -84,17 +84,17 @@
         let audioChunks = [];
         let audioBuffer;
         let inputStream;
-        let selectedFileName = '';
+        let selectedFileName = '';  
 
         document.getElementById('audio-file').addEventListener('change', handleAudioUpload);
         document.getElementById('start-recording').addEventListener('click', startRecording);
         document.getElementById('stop-recording').addEventListener('click', stopRecording);
 
         function handleAudioUpload(event) {
-            const file = event.target.files[0];
+            const file = event.target.files[0];  
             if (!file) return;
 
-            selectedFileName = file.name.split('.').slice(0, -1).join('.');
+            selectedFileName = file.name.split('.').slice(0, -1).join('.');  
 
             const reader = new FileReader();
             reader.onload = function(e) {
@@ -106,7 +106,7 @@
             reader.readAsArrayBuffer(file);
 
             const fileNameDisplay = document.getElementById('file-name-display');
-            fileNameDisplay.textContent = `Selected file: ${selectedFileName}.wav`;
+            fileNameDisplay.textContent = `Selected file: ${selectedFileName}.wav`;  
         }
 
         function startRecording() {
@@ -119,10 +119,19 @@
                 const sourceNode = audioContext.createMediaStreamSource(stream);
                 audioSource = audioContext.createBufferSource();
                 audioSource.buffer = audioBuffer;
+
+                // Set sample rate
+                const sampleRate = audioContext.sampleRate;
+                const sampleRateMismatch = audioBuffer.sampleRate !== sampleRate;
+
+                if (sampleRateMismatch) {
+                    alert('Sample rate mismatch between audio buffer and microphone input. Adjusting to microphone sample rate.');
+                }
+
                 audioSource.connect(audioContext.destination);
                 audioSource.start();
 
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                mediaRecorder = new MediaRecorder(stream);
                 mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
                 mediaRecorder.start();
             });
@@ -130,24 +139,14 @@
 
         function stopRecording() {
             if (mediaRecorder && audioSource) {
-                // 録音停止時の処理を追加
-                mediaRecorder.onstop = () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    
-                    if (audioBlob.size > 0) {
-                        createStereoWav(audioBlob);
-                    } else {
-                        alert('No audio data was recorded.');
-                    }
-                };
-
-                // 録音停止
                 mediaRecorder.stop();
                 audioSource.stop();
+                createStereoWav();
             }
         }
 
-        function createStereoWav(audioBlob) {
+        function createStereoWav() {
+            const audioBlob = new Blob(audioChunks);
             const reader = new FileReader();
             reader.onloadend = () => {
                 const micAudioArrayBuffer = reader.result;
