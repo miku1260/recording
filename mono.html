@@ -68,7 +68,7 @@
     <div class="container">
         <h1>Audio Recorder</h1>
         <input type="file" id="audio-file" accept=".wav" />
-        <input type="text" id="file-name" placeholder="名前を入力してください" />
+        <input type="text" id="file-name" placeholder="名前を入力してください：" />
         <div>
             <button id="start-recording">Start Recording</button>
             <button id="stop-recording">Stop Recording</button>
@@ -83,17 +83,18 @@
         let mediaRecorder;
         let audioChunks = [];
         let audioBuffer;
-        let selectedFileName = '';  // 伴奏ファイル名を保存するための変数
+        let inputStream;
+        let selectedFileName = '';
 
         document.getElementById('audio-file').addEventListener('change', handleAudioUpload);
         document.getElementById('start-recording').addEventListener('click', startRecording);
         document.getElementById('stop-recording').addEventListener('click', stopRecording);
 
         function handleAudioUpload(event) {
-            const file = event.target.files[0];  // ユーザーが選んだファイルの情報を取得
+            const file = event.target.files[0];
             if (!file) return;
 
-            selectedFileName = file.name.split('.').slice(0, -1).join('.');  // 拡張子を除いたファイル名を取得
+            selectedFileName = file.name.split('.').slice(0, -1).join('.');
 
             const reader = new FileReader();
             reader.onload = function(e) {
@@ -105,7 +106,7 @@
             reader.readAsArrayBuffer(file);
 
             const fileNameDisplay = document.getElementById('file-name-display');
-            fileNameDisplay.textContent = `Selected file: ${selectedFileName}.wav`;  // 選択したファイル名を表示
+            fileNameDisplay.textContent = `Selected file: ${selectedFileName}.wav`;
         }
 
         function startRecording() {
@@ -113,6 +114,7 @@
                 alert('Please upload an audio file first.');
                 return;
             }
+            inputStream = new MediaStream();
             navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
                 const sourceNode = audioContext.createMediaStreamSource(stream);
                 audioSource = audioContext.createBufferSource();
@@ -130,31 +132,82 @@
             if (mediaRecorder && audioSource) {
                 mediaRecorder.stop();
                 audioSource.stop();
-                saveRecording();  // 伴奏との結合をやめ、録音音声のみを保存
+                createMonoWav();  // モノラルのWAVファイルを作成
             }
         }
 
-        function saveRecording() {
+        function createMonoWav() {
             const audioBlob = new Blob(audioChunks);
-            const downloadLink = document.getElementById('download-link');
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const micAudioArrayBuffer = reader.result;
+                audioContext.decodeAudioData(micAudioArrayBuffer, micBuffer => {
+                    const numChannels = 1;  // モノラルに設定
+                    const length = micBuffer.length;
+                    const sampleRate = micBuffer.sampleRate;
+                    const offlineContext = new OfflineAudioContext(numChannels, length, sampleRate);
 
-            // 入力されたファイル名を取得
-            let fileName = document.getElementById('file-name').value;
-            if (!fileName) {
-                fileName = 'recording';
+                    const source = offlineContext.createBufferSource();
+                    source.buffer = micBuffer;
+
+                    source.connect(offlineContext.destination);
+                    source.start();
+
+                    offlineContext.startRendering().then(renderedBuffer => {
+                        const wavBlob = bufferToWav(renderedBuffer);
+                        const downloadLink = document.getElementById('download-link');
+
+                        let fileName = document.getElementById('file-name').value;
+                        if (!fileName) {
+                            fileName = 'recording';
+                        }
+
+                        const modifiedFileName = `${fileName}_${selectedFileName}.wav`;
+                        downloadLink.href = URL.createObjectURL(wavBlob);
+                        downloadLink.download = modifiedFileName;
+
+                        downloadLink.click();
+
+                        const fileNameDisplay = document.getElementById('file-name-display');
+                        fileNameDisplay.textContent = `Downloaded file: ${modifiedFileName}`;
+                    });
+                });
+            };
+            reader.readAsArrayBuffer(audioBlob);
+        }
+
+        function bufferToWav(buffer) {
+            const numChannels = 1;  // モノラル用に1チャンネルに設定
+            const length = buffer.length * numChannels * 2 + 44;
+            const wavBuffer = new ArrayBuffer(length);
+            const view = new DataView(wavBuffer);
+
+            writeWavHeader(view, buffer.sampleRate, numChannels, buffer.length);
+
+            let offset = 44;
+            for (let i = 0; i < buffer.length; i++) {
+                const sample = Math.max(-1, Math.min(1, buffer.getChannelData(0)[i]));
+                view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+                offset += 2;
             }
 
-            // ダウンロードファイル名にユーザーの入力と選択したファイル名を追加
-            const modifiedFileName = `${fileName}.wav`;
-            downloadLink.href = URL.createObjectURL(audioBlob);
-            downloadLink.download = modifiedFileName;
+            return new Blob([view], { type: 'audio/wav' });
+        }
 
-            // 自動的にダウンロードを開始
-            downloadLink.click();
-
-            // ダウンロードされたファイル名を表示
-            const fileNameDisplay = document.getElementById('file-name-display');
-            fileNameDisplay.textContent = `Downloaded file: ${modifiedFileName}`;
+        function writeWavHeader(view, sampleRate, numChannels, length) {
+            view.setUint32(0, 1380533830, false);  // "RIFF"
+            view.setUint32(4, 36 + length * numChannels * 2, true);
+            view.setUint32(8, 1463899717, false);  // "WAVE"
+            view.setUint32(12, 1718449184, false);  // "fmt "
+            view.setUint32(16, 16, true);  // Subchunk1Size (16 for PCM)
+            view.setUint16(20, 1, true);  // Audio format (1 is PCM)
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * numChannels * 2, true);  // Byte rate
+            view.setUint16(32, numChannels * 2, true);  // Block align
+            view.setUint16(34, 16, true);  // Bits per sample
+            view.setUint32(36, 1684108385, false);  // "data"
+            view.setUint32(40, length * numChannels * 2, true);
         }
     </script>
 </body>
