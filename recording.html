@@ -5,7 +5,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Recorder</title>
     <style>
-        /* CSS部分はそのままです */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+        }
+        .container {
+            background-color: #fff;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            font-size: 24px;
+            color: #333;
+        }
+        input[type="file"],
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            width: 48%;
+            padding: 10px;
+            margin: 5px 1%;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #download-link {
+            display: none;
+            margin-top: 15px;
+            text-decoration: none;
+            color: #007BFF;
+            font-size: 16px;
+        }
+        #file-name-display {
+            margin-top: 10px;
+            font-size: 16px;
+            color: #555;
+        }
     </style>
 </head>
 <body>
@@ -29,7 +85,6 @@
         let audioBuffer;
         let inputStream;
         let selectedFileName = '';  // 伴奏ファイル名を保存するための変数
-        let audioProcessingNode;  // Audioのプロセスを保持するノード
 
         document.getElementById('audio-file').addEventListener('change', handleAudioUpload);
         document.getElementById('start-recording').addEventListener('click', startRecording);
@@ -43,7 +98,7 @@
 
             const reader = new FileReader();
             reader.onload = function(e) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
                 audioContext.decodeAudioData(e.target.result, function(buffer) {
                     audioBuffer = buffer;
                 });
@@ -54,30 +109,23 @@
             fileNameDisplay.textContent = `Selected file: ${selectedFileName}.wav`;  // 選択したファイル名を表示
         }
 
-        async function startRecording() {
+        function startRecording() {
             if (!audioBuffer) {
                 alert('Please upload an audio file first.');
                 return;
             }
-
             inputStream = new MediaStream();
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            navigator.mediaDevices.getUserMedia({ audio: { latencyHint: 'playback' }, video: false }).then(stream => {
                 const sourceNode = audioContext.createMediaStreamSource(stream);
-
                 audioSource = audioContext.createBufferSource();
                 audioSource.buffer = audioBuffer;
                 audioSource.connect(audioContext.destination);
                 audioSource.start();
 
-                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm', audioBitsPerSecond: 128000 });
                 mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-                mediaRecorder.start();
-
-            } catch (error) {
-                console.error('Error accessing microphone:', error);
-                alert('Could not access the microphone. Please allow microphone access.');
-            }
+                mediaRecorder.start(100);  // チャンクのサイズを小さくして、データ処理の遅延を防ぐ
+            });
         }
 
         function stopRecording() {
@@ -116,17 +164,21 @@
                         const wavBlob = bufferToWav(renderedBuffer);
                         const downloadLink = document.getElementById('download-link');
 
+                        // 入力されたファイル名を取得
                         let fileName = document.getElementById('file-name').value;
                         if (!fileName) {
                             fileName = 'recording';
                         }
 
+                        // ダウンロードファイル名にユーザーの入力と選択したファイル名を追加
                         const modifiedFileName = `${fileName}_${selectedFileName}.wav`;
                         downloadLink.href = URL.createObjectURL(wavBlob);
                         downloadLink.download = modifiedFileName;
 
+                        // 自動的にダウンロードを開始
                         downloadLink.click();
 
+                        // ダウンロードされたファイル名を表示
                         const fileNameDisplay = document.getElementById('file-name-display');
                         fileNameDisplay.textContent = `Downloaded file: ${modifiedFileName}`;
                     });
