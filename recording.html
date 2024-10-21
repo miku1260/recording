@@ -27,7 +27,14 @@
             font-size: 24px;
             color: #333;
         }
-        input[type="file"],
+        select {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
         input[type="text"] {
             width: 100%;
             padding: 10px;
@@ -62,112 +69,82 @@
             font-size: 16px;
             color: #555;
         }
-        @media (max-width: 600px) {
-            .container {
-                padding: 20px;
-            }
-            input[type="file"],
-            input[type="text"],
-            button {
-                font-size: 14px;
-                padding: 8px;
-            }
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Audio Recorder</h1>
-        <input type="file" id="audio-file" accept=".wav" />
-        <input type="text" id="file-name" placeholder="名前を入力してください" />
         <div>
-            <button id="start-recording">Start Recording</button>
-            <button id="stop-recording">Stop Recording</button>
+            <h1>WAVファイルを選択して再生</h1>
+            <label for="audioSelect">再生する音声ファイルを選んでください:</label>
+            <select id="audioSelect">
+                <option value="">選択してください</option>
+                <option value="https://drive.google.com/uc?export=download&id=1zjt-98FWdOfFuBKGij6cGA7pMuufya2W">中島みゆき糸 1</option>
+                <option value="https://drive.google.com/uc?export=download&id=1mFTpMhAkA8iMkzGueNrPra5wo2wzVZzi">ピアノ 2</option>
+            </select>
+
+            <br><br>
+            <h1>Audio Recorder</h1>
+            <input type="text" id="file-name" placeholder="名前を入力してください" />
+            <div>
+                <button id="start-recording">Start Recording</button>
+                <button id="stop-recording">Stop Recording</button>
+            </div>
+            <a id="download-link" style="display:none">Download Recording</a>
+            <div id="file-name-display"></div>
         </div>
-        <a id="download-link" style="display:none">Download Recording</a>
-        <div id="file-name-display"></div>
     </div>
 
     <script>
-        let audioContext;
-        let audioSource;
+        let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let audioBuffer;
         let mediaRecorder;
         let audioChunks = [];
-        let audioBuffer;
-        let inputStream;
-        let selectedFileName = '';  // 伴奏ファイル名を保存するための変数
+        let audioSource;
+        let selectedFileName = '';
+        let accompanimentBuffer;
 
-        document.getElementById('audio-file').addEventListener('change', handleAudioUpload);
+        document.getElementById('audioSelect').addEventListener('change', handleAccompanimentSelection);
         document.getElementById('start-recording').addEventListener('click', startRecording);
         document.getElementById('stop-recording').addEventListener('click', stopRecording);
 
-        function handleAudioUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+        function handleAccompanimentSelection() {
+            const selectedAudioURL = document.getElementById('audioSelect').value;
+            if (!selectedAudioURL) return;
 
-            selectedFileName = file.name.split('.').slice(0, -1).join('.');
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
-                audioContext.decodeAudioData(e.target.result, function(buffer) {
-                    audioBuffer = buffer;
-                });
-            };
-            reader.readAsArrayBuffer(file);
-
-            const fileNameDisplay = document.getElementById('file-name-display');
-            fileNameDisplay.textContent = `Selected file: ${selectedFileName}.wav`;
+            fetch(selectedAudioURL)
+                .then(response => response.arrayBuffer())
+                .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+                .then(buffer => {
+                    accompanimentBuffer = buffer;
+                    selectedFileName = document.getElementById('audioSelect').selectedOptions[0].text; // 選択されたファイル名を取得
+                })
+                .catch(error => console.error('Error loading accompaniment:', error));
         }
 
         function startRecording() {
-            if (!audioBuffer) {
-                alert('Please upload an audio file first.');
+            if (!accompanimentBuffer) {
+                alert('Please select an accompaniment first.');
                 return;
             }
+            audioChunks = [];
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+                mediaRecorder.start();
+                playAccompaniment();
+            });
+        }
 
-            inputStream = new MediaStream();
-            navigator.mediaDevices.getUserMedia({ audio: true })
-                .then(stream => {
-                    const sourceNode = audioContext.createMediaStreamSource(stream);
-                    audioSource = audioContext.createBufferSource();
-                    audioSource.buffer = audioBuffer;
-                    audioSource.connect(audioContext.destination);
-                    audioSource.start(audioContext.currentTime + 0.1);  // 確実な開始タイミング
-
-                    mediaRecorder = new MediaRecorder(stream);
-                    mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-                    mediaRecorder.start(1000);  // 1秒ごとにデータを処理
-
-                    const renderLoop = () => {
-                        if (mediaRecorder.state === 'recording') {
-                            requestAnimationFrame(renderLoop);
-                        }
-                    };
-                    renderLoop();
-                })
-                .catch(error => {
-                    alert('Error accessing microphone: ' + error.message);
-                });
-
-            // 5分の自動停止タイマー
-            setTimeout(() => {
-                if (mediaRecorder.state === 'recording') {
-                    mediaRecorder.stop();
-                    alert('Recording stopped automatically after 5 minutes.');
-                }
-            }, 5 * 60 * 1000);  // 5分で自動停止
+        function playAccompaniment() {
+            const accompanimentSource = audioContext.createBufferSource();
+            accompanimentSource.buffer = accompanimentBuffer;
+            accompanimentSource.connect(audioContext.destination);
+            accompanimentSource.start();
         }
 
         function stopRecording() {
-            if (mediaRecorder && audioSource) {
-                mediaRecorder.stop();
-                audioSource.stop();
-
-                inputStream.getTracks().forEach(track => track.stop());  // リソース解放
-
-                createStereoWav();
-            }
+            mediaRecorder.stop();
+            mediaRecorder.onstop = () => createStereoWav();
         }
 
         function createStereoWav() {
@@ -176,21 +153,19 @@
             reader.onloadend = () => {
                 const micAudioArrayBuffer = reader.result;
                 audioContext.decodeAudioData(micAudioArrayBuffer, micBuffer => {
-                    const numChannels = 2; // ステレオ用に2チャンネル
-                    const length = Math.max(audioBuffer.length, micBuffer.length);
-                    const sampleRate = audioBuffer.sampleRate;
+                    const numChannels = 2;
+                    const length = Math.max(accompanimentBuffer.length, micBuffer.length);
+                    const sampleRate = accompanimentBuffer.sampleRate;
                     const offlineContext = new OfflineAudioContext(numChannels, length, sampleRate);
 
-                    // 左チャンネルに伴奏、右チャンネルにマイク音声
                     const leftChannel = offlineContext.createBufferSource();
-                    leftChannel.buffer = audioBuffer;
-
+                    leftChannel.buffer = accompanimentBuffer;
                     const rightChannel = offlineContext.createBufferSource();
                     rightChannel.buffer = micBuffer;
 
                     const merger = offlineContext.createChannelMerger(2);
-                    leftChannel.connect(merger, 0, 0); // 左チャンネルに接続
-                    rightChannel.connect(merger, 0, 1); // 右チャンネルに接続
+                    leftChannel.connect(merger, 0, 0);
+                    rightChannel.connect(merger, 0, 1);
                     merger.connect(offlineContext.destination);
 
                     leftChannel.start();
@@ -208,8 +183,7 @@
                         const modifiedFileName = `${fileName}_${selectedFileName}.wav`;
                         downloadLink.href = URL.createObjectURL(wavBlob);
                         downloadLink.download = modifiedFileName;
-
-                        downloadLink.click();
+                        downloadLink.style.display = 'block';
 
                         const fileNameDisplay = document.getElementById('file-name-display');
                         fileNameDisplay.textContent = `Downloaded file: ${modifiedFileName}`;
@@ -240,18 +214,18 @@
         }
 
         function writeWavHeader(view, sampleRate, numChannels, length) {
-            view.setUint32(0, 1380533830, false);  // "RIFF"
+            view.setUint32(0, 1380533830, false);
             view.setUint32(4, 36 + length * numChannels * 2, true);
-            view.setUint32(8, 1463899717, false);  // "WAVE"
-            view.setUint32(12, 1718449184, false);  // "fmt "
-            view.setUint32(16, 16, true);  // Subchunk1Size (16 for PCM)
-            view.setUint16(20, 1, true);  // Audio format (1 is PCM)
+            view.setUint32(8, 1463899717, false);
+            view.setUint32(12, 1718449184, false);
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
             view.setUint16(22, numChannels, true);
             view.setUint32(24, sampleRate, true);
-            view.setUint32(28, sampleRate * numChannels * 2, true);  // Byte rate
-            view.setUint16(32, numChannels * 2, true);  // Block align
-            view.setUint16(34, 16, true);  // Bits per sample
-            view.setUint32(36, 1684108385, false);  // "data"
+            view.setUint32(28, sampleRate * numChannels * 2, true);
+            view.setUint16(32, numChannels * 2, true);
+            view.setUint16(34, 16, true);
+            view.setUint32(36, 1684108385, false);
             view.setUint32(40, length * numChannels * 2, true);
         }
     </script>
